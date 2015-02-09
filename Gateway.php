@@ -1,6 +1,4 @@
 <?php
-use Config\Store;
-
 require_once __DIR__.'/Config/Store.php';
 
 /**
