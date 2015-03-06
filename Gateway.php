@@ -64,15 +64,6 @@ class Gateway
    } 
    
    /**
-    * 向当前客户端发送消息
-    * @param string $message
-    */
-   public static function sendToCurrentClient($message)
-   {
-       return self::sendCmdAndMessageToClient(null, GatewayProtocol::CMD_SEND_TO_ONE, $message);
-   }
-   
-   /**
     * 判断某个客户端是否在线
     * @param int $client_id
     * @return 0/1
@@ -148,29 +139,12 @@ class Gateway
     */
    public static function closeClient($client_id)
    {
-       if($client_id === Context::$client_id)
+       $address = Store::instance('gateway')->get('gateway-'.$client_id);
+       if(!$address)
        {
-           return self::kickCurrentClient();
+           return false;
        }
-       // 不是发给当前用户则使用存储中的地址
-       else
-       {
-           $address = Store::instance('gateway')->get('gateway-'.$client_id);
-           if(!$address)
-           {
-               return false;
-           }
-           return self::kickAddress($address, $client_id);
-       }
-   }
-   
-   /**
-    * 踢掉当前客户端
-    * @param string $message
-    */
-   public static function closeCurrentClient()
-   {
-       return self::kickAddress(Context::$local_ip.':'.Context::$local_port, Context::$client_id);
+       return self::kickAddress($address, $client_id);
    }
    
    /**
