@@ -70,7 +70,7 @@ class Gateway
     */
    public static function isOnline($client_id)
    {
-       $address = Store::instance('gateway')->get('gateway-'.$client_id);
+       $address = Store::instance('gateway')->get('client_id-'.$client_id);
        if(!$address)
        {
            return 0;
@@ -139,7 +139,7 @@ class Gateway
     */
    public static function closeClient($client_id)
    {
-       $address = Store::instance('gateway')->get('gateway-'.$client_id);
+       $address = Store::instance('gateway')->get('client_id-'.$client_id);
        if(!$address)
        {
            return false;
@@ -177,7 +177,7 @@ class Gateway
        }
        else
        {
-           $address = Store::instance('gateway')->get('gateway-'.$client_id);
+           $address = Store::instance('gateway')->get('client_id-'.$client_id);
            if(!$address)
            {
                return false;
