@@ -58,6 +58,10 @@ class Gateway
        else
        {
            $all_addresses = Store::instance('gateway')->get('GLOBAL_GATEWAY_ADDRESS');
+           if(!is_array($all_addresses))
+           {
+               throw new \Exception('bad gateway addresses ' . var_export($all_addresses, true));
+           }
            foreach($all_addresses as $address)
            {
                self::sendToGateway($address, $gateway_data);
