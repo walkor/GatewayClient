@@ -679,10 +679,13 @@ class FileStore
     }
 }
 
-class Redisd extends \Redis
+if(\Config\Store::$driver == \Config\Store::DRIVER_REDIS)
 {
-    public function increment($key)
+    class Redisd extends \Redis
     {
-        return parent::incr($key);
+        public function increment($key)
+        {
+            return parent::incr($key);
+        }
     }
 }
