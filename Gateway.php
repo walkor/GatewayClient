@@ -46,27 +46,7 @@ class Gateway
            return;
        }
        
-       // 如果有businessWorker实例，说明运行在workerman环境中，通过businessWorker中的长连接发送数据
-       if(self::$businessWorker)
-       {
-           foreach(self::$businessWorker->gatewayConnections as $gateway_connection)
-           {
-               $gateway_connection->send($gateway_data);
-           }
-       }
-       // 运行在其它环境中，使用udp向worker发送数据
-       else
-       {
-           $all_addresses = Store::instance('gateway')->get('GLOBAL_GATEWAY_ADDRESS');
-           if(!is_array($all_addresses))
-           {
-               throw new \Exception('bad gateway addresses ' . var_export($all_addresses, true));
-           }
-           foreach($all_addresses as $address)
-           {
-               self::sendToGateway($address, $gateway_data);
-           }
-       }
+       return self::sendToAllGateway($gateway_data);
    }
    
    /**
@@ -164,6 +144,34 @@ class Gateway
    }
    
    /**
+    * 将client_id与uid绑定
+    * @param int $client_id
+    * @param int/string $uid
+    */
+   public static function bindUid($client_id, $uid)
+   {
+       $gateway_data = GatewayProtocol::$empty;
+       $gateway_data['cmd'] = GatewayProtocol::CMD_BIND_UID;
+       $gateway_data['client_id'] = $client_id;
+       $gateway_data['ext_data'] = $uid;
+       return self::sendToGateway(Context::$local_ip . ':' . Context::$local_port, $gateway_data);
+   }
+    
+   /**
+    * 向所有uid发送
+    * @param unknown_type $uid
+    * @param unknown_type $message
+    */
+   public static function sendToUid($uid, $message)
+   {
+       $gateway_data = GatewayProtocol::$empty;
+       $gateway_data['cmd'] = GatewayProtocol::CMD_SEND_TO_UID;
+       $gateway_data['body'] = $message;
+       $gateway_data['ext_data'] = $uid;
+       return self::sendToAllGateway($gateway_data);
+   }
+   
+   /**
     * 更新session,框架自动调用，开发者不要调用
     * @param int $client_id
     * @param string $session_str
@@ -255,6 +263,35 @@ class Gateway
        $gateway_buffer = GatewayProtocol::encode($gateway_data);
        $client = stream_socket_client("udp://$address", $errno, $errmsg);
        return strlen($gateway_buffer) == stream_socket_sendto($client, $gateway_buffer);
+   }
+   
+   /**
+    * 向所有gateway发送数据
+    * @param string $gateway_data
+    */
+   protected static function sendToAllGateway($gateway_data)
+   {
+       // 如果有businessWorker实例，说明运行在workerman环境中，通过businessWorker中的长连接发送数据
+       if(self::$businessWorker)
+       {
+           foreach(self::$businessWorker->gatewayConnections as $gateway_connection)
+           {
+               $gateway_connection->send($gateway_data);
+           }
+       }
+       // 运行在其它环境中，使用udp向worker发送数据
+       else
+       {
+           $all_addresses = Store::instance('gateway')->get('GLOBAL_GATEWAY_ADDRESS');
+           if(!$all_addresses)
+           {
+               throw new \Exception('GLOBAL_GATEWAY_ADDRESS is ' . var_export($all_addresses, true));
+           }
+           foreach($all_addresses as $address)
+           {
+               self::sendToGateway($address, $gateway_data);
+           }
+       }
    }
    
    /**
@@ -400,6 +437,12 @@ class GatewayProtocol
 
     // 判断是否在线
     const CMD_IS_ONLINE = 11;
+    
+    // client_id绑定到uid
+    const CMD_BIND_UID = 12;
+    
+    // 向uid发送数据
+    const CMD_SEND_TO_UID = 13;
 
     // 包体是标量
     const FLAG_BODY_IS_SCALAR = 0x01;
