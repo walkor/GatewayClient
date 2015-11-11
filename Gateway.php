@@ -11,11 +11,9 @@
  * @link http://www.workerman.net/
  * @license http://www.opensource.org/licenses/mit-license.php MIT License
  */
-require_once __DIR__.'/Config/Store.php';
 
 /**
- * Gateway/Worker推送客户端
- * @author walkor <walkor@workerman.net>
+ * 数据发送相关
  */
 class Gateway
 {
@@ -23,11 +21,17 @@ class Gateway
      * gateway实例
      * @var object
      */
-    protected static  $businessWorker = null;
+    protected static $businessWorker = null;
+
+    /**
+     * 注册中心地址
+     * @var string
+     */
+    public static $registerAddress = '127.0.0.1:1236';
     
    /**
     * 向所有客户端(或者client_id_array指定的客户端)广播消息
-    * @param string $message 向客户端发送的消息（可以是二进制数据）
+    * @param string $message 向客户端发送的消息
     * @param array $client_id_array 客户端id数组
     */
    public static function sendToAll($message, $client_id_array = null)
@@ -38,8 +42,19 @@ class Gateway
        
        if($client_id_array)
        {
-           $params = array_merge(array('N*'), $client_id_array);
-           $gateway_data['ext_data'] = call_user_func_array('pack', $params);
+           $data_array = array();
+           foreach($client_id_array as $client_id)
+           {
+              $address = Context::clientIdToAddress($client_id);
+              $data_array[long2ip($address['local_ip']).":{$address['local_port']}"][$address['connection_id']] = $address['connection_id'];
+           }
+           foreach($data_array as $addr=>$connection_id_list)
+           {
+              $the_gateway_data = $gateway_data;
+              $the_gateway_data['ext_data'] = call_user_func_array('pack', array_merge(array('N*'), $connection_id_list));
+              self::sendToGateway($addr, $the_gateway_data); 
+           }
+           return;
        }
        elseif(empty($client_id_array) && is_array($client_id_array))
        {
@@ -66,66 +81,199 @@ class Gateway
     */
    public static function isOnline($client_id)
    {
-       $address = Store::instance('gateway')->get('client_id-'.$client_id);
-       if(!$address)
+       $address_data = Context::clientIdToAddress($client_id);
+       $address = long2ip($address_data['local_ip']).":{$address_data['local_port']}";
+       if(isset(self::$businessWorker))
        {
-           return 0;
+           if(!isset(self::$businessWorker->gatewayConnections[$address]))
+           {
+               return 0;
+           }
        }
        $gateway_data = GatewayProtocol::$empty;
        $gateway_data['cmd'] = GatewayProtocol::CMD_IS_ONLINE;
-       $gateway_data['client_id'] = $client_id;
-       return self::sendUdpAndRecv($address, $gateway_data);
+       $gateway_data['connection_id'] = $address_data['connection_id'];
+       return (int)self::sendAndRecv($address, $gateway_data);
    }
    
    /**
-    * 获取在线状态，目前返回一个在线client_id数组
+    * 获取在线状态，目前返回一个在线client_id数组,client_id为key
     * @return array
     */
-   public static function getOnlineStatus()
+   public static function getALLClientInfo($group = null)
    {
        $gateway_data = GatewayProtocol::$empty;
-       $gateway_data['cmd'] = GatewayProtocol::CMD_GET_ONLINE_STATUS;
+       if(!$group)
+       {
+           $gateway_data['cmd'] = GatewayProtocol::CMD_GET_ALL_CLIENT_INFO;
+       }
+       else
+       {
+           $gateway_data['cmd'] = GatewayProtocol::CMD_GET_CLINET_INFO_BY_GROUP;
+           $gateway_data['ext_data'] = $group;
+       }
+       $status_data = array();
+       $all_buffer_array = self::getBufferFromAllGateway($gateway_data);
+       foreach($all_buffer_array as $local_ip=>$buffer_array)
+       {
+           foreach($buffer_array as $local_port=>$buffer)
+           {
+               $data = json_decode(rtrim($buffer), true);
+               if($data)
+               {
+                   foreach($data as $connection_id=>$session_buffer)
+                   {
+                       $status_data[Context::addressToClientId($local_ip, $local_port, $connection_id)] = $session_buffer ? Context::sessionDecode($session_buffer) : array();
+                   }
+               }
+           }
+       }
+       return $status_data;
+   }
+  
+   /**
+    * 获取某个组的成员信息
+    * @param string group
+    * @return array
+    */ 
+   public static function getClientInfoByGroup($group)
+   {
+       return self::getALLClientInfo($group);
+   }
+   
+   /**
+    * 获取某个组的成员数目
+    * @param string $group
+    * @return int
+    */
+   public static function getClientCountByGroup($group)
+   {
+       $gateway_data = GatewayProtocol::$empty;
+       $gateway_data['cmd'] = GatewayProtocol::CMD_GET_CLIENT_COUNT_BY_GROUP;
+       $gateway_data['ext_data'] = $group;
+       $total_count = 0;
+       $all_buffer_array = self::getBufferFromAllGateway($gateway_data);
+       foreach($all_buffer_array as $local_ip=>$buffer_array)
+       {
+           foreach($buffer_array as $local_port=>$buffer)
+           {
+               $count = intval($buffer);
+               if($count)
+               {
+                   $total_count += $count;
+               }
+           }
+       }
+       return $total_count;
+   }
+   
+   /**
+    * 获取与uid绑定的client_id列表
+    * @param string $uid
+    * @return array
+    */
+   public static function getClientIdByUid($uid)
+   {
+       $gateway_data = GatewayProtocol::$empty;
+       $gateway_data['cmd'] = GatewayProtocol::CMD_GET_CLIENT_ID_BY_UID;
+       $gateway_data['ext_data'] = $uid;
+       $client_list = array();
+       $all_buffer_array = self::getBufferFromAllGateway($gateway_data);
+       foreach($all_buffer_array as $local_ip=>$buffer_array)
+       {
+           foreach($buffer_array as $local_port=>$buffer)
+           {
+               $connection_id_array = json_decode(rtrim($buffer), true);
+               if($connection_id_array)
+               {
+                   foreach($connection_id_array as $connection_id)
+                   {
+                       $client_list[] = Context::addressToClientId($local_ip, $local_port, $connection_id);
+                   }
+               }
+           }
+       }
+       return $client_list;
+   }
+   
+   /**
+    * 批量向所有gateway发包，并得到返回数组
+    * @param string $gateway_data
+    * @return array
+    */
+   protected static function getBufferFromAllGateway($gateway_data)
+   {
        $gateway_buffer = GatewayProtocol::encode($gateway_data);
-       
-       $all_addresses = Store::instance('gateway')->get('GLOBAL_GATEWAY_ADDRESS');
-       $client_array = $status_data = array();
-       // 批量向所有gateway进程发送CMD_GET_ONLINE_STATUS命令
+       if(isset(self::$businessWorker))
+       {
+           $all_addresses = self::$businessWorker->getAllGatewayAddresses();
+           if(empty($all_addresses))
+           {
+               throw new \Exception('businessWorker::getAllGatewayAddresses return empty');
+           }
+       }
+       else
+       {
+           $all_addresses = self::getAllGatewayAddressesFromRegister();
+           if(empty($all_addresses))
+           {
+               return array();
+           }
+       }
+       $client_array = $status_data = $client_address_map = $receive_buffer_array = array();
+       // 批量向所有gateway进程发送请求数据
        foreach($all_addresses as $address)
        {
-           $client = stream_socket_client("udp://$address", $errno, $errmsg);
-           if(strlen($gateway_buffer) === stream_socket_sendto($client, $gateway_buffer))
+           $client = stream_socket_client("tcp://$address", $errno, $errmsg);
+           if($client && strlen($gateway_buffer) === stream_socket_sendto($client, $gateway_buffer))
            {
-               $client_id = (int) $client;
-               $client_array[$client_id] = $client;
+               $socket_id = (int) $client;
+               $client_array[$socket_id] = $client;
+               $client_address_map[$socket_id] = explode(':',$address);
+               $receive_buffer_array[$socket_id] = '';
            }
        }
        // 超时1秒
-       $time_out = 1;
+       $timeout = 1;
        $time_start = microtime(true);
        // 批量接收请求
        while(count($client_array) > 0)
        {
            $write = $except = array();
            $read = $client_array;
-           if(@stream_select($read, $write, $except, $time_out))
+           if(@stream_select($read, $write, $except, $timeout))
            {
                foreach($read as $client)
                {
-                   // udp
-                   $data = json_decode(fread($client, 65535), true);
-                   if($data)
+                   $socket_id = (int)$client;
+                   $buffer = stream_socket_recvfrom($client, 65535);
+                   if($buffer !== '' && $buffer !== false)
                    {
-                       $status_data = array_merge($status_data, $data);
+                       $receive_buffer_array[$socket_id] .= $buffer;
+                       if($receive_buffer_array[$socket_id][strlen($receive_buffer_array[$socket_id])-1] === "\n")
+                       {
+                           unset($client_array[$socket_id]);
+                       }
                    }
-                   unset($client_array[$client]);
+                   elseif(feof($client))
+                   {
+                       unset($client_array[$socket_id]);
+                   }
                }
            }
-           if(microtime(true) - $time_start > $time_out)
+           if(microtime(true) - $time_start > $timeout)
            {
                break;
            }
        }
-       return $status_data;
+       $format_buffer_array = array();
+       foreach($receive_buffer_array as  $socket_id=>$buffer)
+       {
+           $local_ip = ip2long($client_address_map[$socket_id][0]);
+           $local_port = $client_address_map[$socket_id][1];
+           $format_buffer_array[$local_ip][$local_port] = $buffer;
+       }
+       return $format_buffer_array;
    }
    
    /**
@@ -135,12 +283,17 @@ class Gateway
     */
    public static function closeClient($client_id)
    {
-       $address = Store::instance('gateway')->get('client_id-'.$client_id);
-       if(!$address)
+       if($client_id === Context::$client_id)
        {
-           return false;
+           return self::closeCurrentClient();
        }
-       return self::kickAddress($address, $client_id);
+       // 不是发给当前用户则使用存储中的地址
+       else
+       {
+           $address_data = Context::clientIdToAddress($client_id);
+           $address = long2ip($address_data['local_ip']).":{$address_data['local_port']}";
+           return self::kickAddress($address, $address_data['connection_id']);
+       }
    }
    
    /**
@@ -150,16 +303,42 @@ class Gateway
     */
    public static function bindUid($client_id, $uid)
    {
-       $gateway_data = GatewayProtocol::$empty;
-       $gateway_data['cmd'] = GatewayProtocol::CMD_BIND_UID;
-       $gateway_data['client_id'] = $client_id;
-       $gateway_data['ext_data'] = $uid;
-       return self::sendToGateway(Context::$local_ip . ':' . Context::$local_port, $gateway_data);
+       return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_BIND_UID, '', $uid);
    }
-    
+   
+   /**
+    * 将client_id与uid绑定
+    * @param int $client_id
+    * @param int/string $uid
+    */
+   public static function unbindUid($client_id, $uid)
+   {
+       return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_UNBIND_UID, '', $uid);
+   }
+   
+   /**
+    * 将client_id加入组
+    * @param int $client_id
+    * @param int/string $group
+    */
+   public static function joinGroup($client_id, $group)
+   {
+       return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_JOIN_GROUP, '', $group);
+   }
+   
+   /**
+    * 将client_id离开组
+    * @param int $client_id
+    * @param int/string $group
+    */
+   public static function leaveGroup($client_id, $group)
+   {
+       return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_LEAVE_GROUP, '', $group);
+   }
+   
    /**
     * 向所有uid发送
-    * @param unknown_type $uid
+    * @param int/string/array $uid
     * @param unknown_type $message
     */
    public static function sendToUid($uid, $message)
@@ -170,10 +349,32 @@ class Gateway
        
        if(!is_array($uid))
        {
-			$uid = array($uid);
+          $uid = array($uid);
        }
+        
        $gateway_data['ext_data'] = json_encode($uid);
        
+       return self::sendToAllGateway($gateway_data);
+   }
+   
+   /**
+    * 向group发送
+    * @param int/string/array $group
+    * @param string $message
+    */
+   public static function sendToGroup($group, $message)
+   {
+       $gateway_data = GatewayProtocol::$empty;
+       $gateway_data['cmd'] = GatewayProtocol::CMD_SEND_TO_GROUP;
+       $gateway_data['body'] = $message;
+        
+       if(!is_array($group))
+       {
+           $group = array($group);
+       }
+   
+       $gateway_data['ext_data'] = json_encode($group);
+        
        return self::sendToAllGateway($gateway_data);
    }
    
@@ -184,11 +385,17 @@ class Gateway
     */
    public static function updateSocketSession($client_id, $session_str)
    {
-       $gateway_data = GatewayProtocol::$empty;
-       $gateway_data['cmd'] = GatewayProtocol::CMD_UPDATE_SESSION;
-       $gateway_data['client_id'] = $client_id;
-       $gateway_data['ext_data'] = $session_str;
-       return self::sendToGateway(Context::$local_ip . ':' . Context::$local_port, $gateway_data);
+       return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_UPDATE_SESSION, '', $session_str);
+   }
+   
+   /**
+    * 更新session
+    * @param int $client_id
+    * @param array $session
+    */
+   public static function updateSession($client_id, array $session)
+   {
+       self::updateSocketSession($client_id, Context::sessionEncode($session));
    }
    
    /**
@@ -198,54 +405,82 @@ class Gateway
     * @param string $message
     * @return boolean
     */
-   protected static function sendCmdAndMessageToClient($client_id, $cmd , $message)
+   protected static function sendCmdAndMessageToClient($client_id, $cmd , $message, $ext_data = '')
    {
        // 如果是发给当前用户则直接获取上下文中的地址
        if($client_id === Context::$client_id || $client_id === null)
        {
-           $address = Context::$local_ip.':'.Context::$local_port;
+           $address = long2ip(Context::$local_ip).':'.Context::$local_port;
+           $connection_id = Context::$connection_id;
        }
        else
        {
-           $address = Store::instance('gateway')->get('client_id-'.$client_id);
-           if(!$address)
-           {
-               return false;
-           }
+           $address_data = Context::clientIdToAddress($client_id);
+           $address = long2ip($address_data['local_ip']).":{$address_data['local_port']}";
+           $connection_id = $address_data['connection_id'];
        }
        $gateway_data = GatewayProtocol::$empty;
        $gateway_data['cmd'] = $cmd;
-       $gateway_data['client_id'] = $client_id ? $client_id : Context::$client_id;
+       $gateway_data['connection_id'] = $connection_id;
        $gateway_data['body'] = $message;
+       if(!empty($ext_data))
+       {
+           $gateway_data['ext_data'] = $ext_data;
+       }
        
        return self::sendToGateway($address, $gateway_data);
    }
    
    /**
-    * 发送udp数据并返回
+    * 发送数据并返回
     * @param int $address
     * @param string $message
     * @return boolean
     */
-   protected static function sendUdpAndRecv($address , $data)
+   protected static function sendAndRecv($address , $data)
    {
        $buffer = GatewayProtocol::encode($data);
-       // 非workerman环境，使用udp发送数据
-       $client = stream_socket_client("udp://$address", $errno, $errmsg);
-       if(strlen($buffer) == stream_socket_sendto($client, $buffer))
+       $client = stream_socket_client("tcp://$address", $errno, $errmsg);
+       if(!$client)
        {
+           throw new \Exception("can not connect to tcp://$address $errmsg");
+       }
+       if(strlen($buffer) === stream_socket_sendto($client, $buffer))
+       {
+           $timeout = 1;
            // 阻塞读
            stream_set_blocking($client, 1);
            // 1秒超时
            stream_set_timeout($client, 1);
-           // 读udp数据
-           $data = fread($client, 655350);
+           $all_buffer = '';
+           $time_start = microtime(true);
+           while(1)
+           {
+               $buf = stream_socket_recvfrom($client, 655350);
+               if($buf !== '' && $buf !== false)
+               {
+                   $all_buffer .= $buf;
+               }
+               else
+               {
+                   if(feof($client))
+                   {
+                       throw new \Exception("connection close tcp://$address");
+                   }
+                   continue;
+               }
+               // 回复的数据都是以\n结尾
+               if(($all_buffer && $all_buffer[strlen($all_buffer)-1] === "\n") || microtime(true) - $time_start > $timeout)
+               {
+                   break;
+               }
+           }
            // 返回结果
-           return json_decode($data, true);
+           return json_decode(rtrim($all_buffer), true);
        }
        else
        {
-           throw new \Exception("sendUdpAndRecv($address, \$bufer) fail ! Can not send UDP data!", 502);
+           throw new \Exception("sendAndRecv($address, \$bufer) fail ! Can not send data!", 502);
        }
    }
    
@@ -267,7 +502,7 @@ class Gateway
        }
        // 非workerman环境，使用udp发送数据
        $gateway_buffer = GatewayProtocol::encode($gateway_data);
-       $client = stream_socket_client("udp://$address", $errno, $errmsg);
+       $client = stream_socket_client("tcp://$address", $errno, $errmsg);
        return strlen($gateway_buffer) == stream_socket_sendto($client, $gateway_buffer);
    }
    
@@ -285,13 +520,13 @@ class Gateway
                $gateway_connection->send($gateway_data);
            }
        }
-       // 运行在其它环境中，使用udp向worker发送数据
+       // 运行在其它环境中，通过注册中心得到gateway地址
        else
        {
-           $all_addresses = Store::instance('gateway')->get('GLOBAL_GATEWAY_ADDRESS');
+           $all_addresses = self::getAllGatewayAddressesFromRegister();
            if(!$all_addresses)
            {
-               throw new \Exception('GLOBAL_GATEWAY_ADDRESS is ' . var_export($all_addresses, true));
+               throw new \Exception('Gateway::getAllGatewayAddressesFromRegister() with registerAddress:' . self::$registerAddress . '  return ' . var_export($all_addresses, true));
            }
            foreach($all_addresses as $address)
            {
@@ -308,11 +543,11 @@ class Gateway
     * @param string $message
     * @param int $client_id
     */
-   protected  static function kickAddress($address, $client_id)
+   protected  static function kickAddress($address, $connection_id)
    {
        $gateway_data = GatewayProtocol::$empty;
        $gateway_data['cmd'] = GatewayProtocol::CMD_KICK;
-       $gateway_data['client_id'] = $client_id;
+       $gateway_data['connection_id'] = $connection_id;
        return self::sendToGateway($address, $gateway_data);
    }
    
@@ -324,12 +559,32 @@ class Gateway
    {
        self::$businessWorker = $business_worker_instance;
    }
- 
+
+   /**
+    * 获取通过注册中心获取所有gateway通讯地址
+    * @return array
+    */
+   protected static function getAllGatewayAddressesFromRegister()
+   {
+       $client = stream_socket_client('tcp://'.self::$registerAddress, $errno, $errmsg, 1);
+       if(!$client)
+       {
+           throw new \Exception('Can not connect to tcp://' . self::$registerAddress . ' ' .$errmsg);
+       }
+       fwrite($client, '{"event":"worker_connect"}'."\n");
+       stream_set_timeout($client, 1);
+       $ret = fread($client, 65535);
+       if(!$ret || !$data = json_decode(trim($ret), true))
+       {
+           throw new \Exception('getAllGatewayAddressesFromRegister fail. tcp://' . self::$registerAddress . ' return '.var_export($ret, true));
+       }
+       return $data['addresses'];
+   } 
 }
+
 
 /**
  * 上下文 包含当前用户uid， 内部通信local_ip local_port socket_id ，以及客户端client_ip client_port
- * @author walkor
  */
 class Context
 {
@@ -354,10 +609,15 @@ class Context
      */
     public static $client_port;
     /**
-     * 用户id
-     * @var int
+     * client_id
+     * @var string
      */
     public static $client_id;
+    /**
+     * 连接connection->id
+     * @var int
+     */
+    public static $connection_id;
 
     /**
      * 编码session
@@ -372,7 +632,7 @@ class Context
         }
         return '';
     }
-
+    
     /**
      * 解码session
      * @param string $session_buffer
@@ -382,93 +642,139 @@ class Context
     {
         return unserialize($session_buffer);
     }
-
+    
     /**
      * 清除上下文
      * @return void
      */
     public static function clear()
     {
-        self::$local_ip = self::$local_port  = self::$client_ip = self::$client_port = self::$client_id  = null;
+        self::$local_ip = self::$local_port  = self::$client_ip = self::$client_port = self::$client_id  = self::$connection_id = null;
     }
+ 
+    /**
+     * 通讯地址到client_id的转换
+     * @return string
+     */
+    public static function addressToClientId($local_ip, $local_port, $connection_id)
+    {
+        return bin2hex(pack('NnN', $local_ip, $local_port, $connection_id));
+    }
+
+    /**
+     * client_id到通讯地址的转换
+     * @return array
+     */
+    public static function clientIdToAddress($client_id)
+    {
+        if(strlen($client_id) !== 20)
+        {
+            throw new \Exception("client_id $client_id is invalid");
+        }
+        return unpack('Nlocal_ip/nlocal_port/Nconnection_id' ,pack('H*', $client_id));
+    }
+
 }
 
 /**
  * Gateway与Worker间通讯的二进制协议
- *
+ * 
  * struct GatewayProtocol
  * {
  *     unsigned int        pack_len,
- *     unsigned char     cmd,//命令字
+ *     unsigned char       cmd,//命令字
  *     unsigned int        local_ip,
- *     unsigned short    local_port,
+ *     unsigned short      local_port,
  *     unsigned int        client_ip,
- *     unsigned short    client_port,
- *     unsigned int        client_id,
- *     unsigned char      flag,
+ *     unsigned short      client_port,
+ *     unsigned int        connection_id,
+ *     unsigned char       flag,
+ *     unsigned short      gateway_port,
  *     unsigned int        ext_len,
- *     char[ext_len]        ext_data,
+ *     char[ext_len]       ext_data,
  *     char[pack_length-HEAD_LEN] body//包体
  * }
- *
- *
- * @author walkor <walkor@workerman.net>
+ * NCNnNnNCnN
  */
-
 class GatewayProtocol
 {
     // 发给worker，gateway有一个新的连接
     const CMD_ON_CONNECTION = 1;
-
+    
     // 发给worker的，客户端有消息
     const CMD_ON_MESSAGE = 3;
-
+    
     // 发给worker上的关闭链接事件
     const CMD_ON_CLOSE = 4;
-
+    
     // 发给gateway的向单个用户发送数据
     const CMD_SEND_TO_ONE = 5;
-
+    
     // 发给gateway的向所有用户发送数据
     const CMD_SEND_TO_ALL = 6;
-
+    
     // 发给gateway的踢出用户
     const CMD_KICK = 7;
-
+    
     // 发给gateway，通知用户session更改
     const CMD_UPDATE_SESSION = 9;
-
+    
     // 获取在线状态
-    const CMD_GET_ONLINE_STATUS = 10;
-
+    const CMD_GET_ALL_CLIENT_INFO = 10;
+    
     // 判断是否在线
     const CMD_IS_ONLINE = 11;
     
     // client_id绑定到uid
     const CMD_BIND_UID = 12;
     
+    // 解绑
+    const CMD_UNBIND_UID = 13;
+    
     // 向uid发送数据
-    const CMD_SEND_TO_UID = 13;
-
+    const CMD_SEND_TO_UID = 14;
+    
+    // 根据uid获取绑定的clientid
+    const CMD_GET_CLIENT_ID_BY_UID = 15;
+    
+    // 加入组
+    const CMD_JOIN_GROUP = 20;
+    
+    // 离开组
+    const CMD_LEAVE_GROUP = 21;
+    
+    // 向组成员发消息
+    const CMD_SEND_TO_GROUP = 22;
+    
+    // 获取组成员
+    const CMD_GET_CLINET_INFO_BY_GROUP = 23;
+    
+    // 获取组成员数
+    const CMD_GET_CLIENT_COUNT_BY_GROUP = 24;
+    
+    // worker连接gateway事件
+    const CMD_WORKER_CONNECT = 200;
+    
     // 包体是标量
     const FLAG_BODY_IS_SCALAR = 0x01;
-
+    
     /**
      * 包头长度
      * @var integer
      */
-    const HEAD_LEN = 26;
-
+    const HEAD_LEN = 28;
+    
     public static $empty = array(
-            'cmd' => 0,
-            'local_ip' => '0.0.0.0',
-            'local_port' => 0,
-            'client_ip' => '0.0.0.0',
-            'client_port' => 0,
-            'client_id' => 0,
-            'flag' => 0,
-            'ext_data' => '',
-            'body' => '',
+        'cmd' => 0,
+        'local_ip' => 0,
+        'local_port' => 0,
+        'client_ip' => 0,
+        'client_port' => 0,
+        'connection_id' => 0,
+        'flag' => 0,
+        'gateway_port' => 0,
+        'ext_data' => '',
+        'body' => '',
     );
      
     /**
@@ -482,11 +788,11 @@ class GatewayProtocol
         {
             return 0;
         }
-
+        
         $data = unpack("Npack_len", $buffer);
         return $data['pack_len'];
     }
-
+    
     /**
      * 获取整个包的buffer
      * @param array $data
@@ -501,23 +807,24 @@ class GatewayProtocol
         }
         $ext_len = strlen($data['ext_data']);
         $package_len = self::HEAD_LEN + $ext_len + strlen($data['body']);
-        return pack("NCNnNnNNC",  $package_len,
-                $data['cmd'], ip2long($data['local_ip']),
-                $data['local_port'], ip2long($data['client_ip']),
-                $data['client_port'], $data['client_id'],
-                $ext_len, $flag) . $data['ext_data'] . $data['body'];
+        return pack("NCNnNnNCnN", $package_len,
+                       $data['cmd'], $data['local_ip'],
+                       $data['local_port'], $data['client_ip'],
+                       $data['client_port'], $data['connection_id'], 
+                       $flag, $data['gateway_port'], 
+                       $ext_len) . $data['ext_data'] . $data['body'];
     }
-
+    
     /**
      * 从二进制数据转换为数组
      * @param string $buffer
      * @return array
-     */
+     */    
     public static function decode($buffer)
     {
-        $data = unpack("Npack_len/Ccmd/Nlocal_ip/nlocal_port/Nclient_ip/nclient_port/Nclient_id/Next_len/Cflag", $buffer);
-        $data['local_ip'] = long2ip($data['local_ip']);
-        $data['client_ip'] = long2ip($data['client_ip']);
+        $data = unpack("Npack_len/Ccmd/Nlocal_ip/nlocal_port/Nclient_ip/nclient_port/Nconnection_id/Cflag/ngateway_port/Next_len", $buffer);
+        $data['local_ip'] = $data['local_ip'];
+        $data['client_ip'] = $data['client_ip'];
         if($data['ext_len'] > 0)
         {
             $data['ext_data'] = substr($buffer, self::HEAD_LEN, $data['ext_len']);
@@ -546,195 +853,5 @@ class GatewayProtocol
     }
 }
 
-/**
- * 存储类
- * 这里用memcache实现
- * @author walkor <walkor@workerman.net>
- */
-class Store
-{
-    /**
-     * 实例数组
-     * @var array
-     */
-    protected static $instance = array();
 
-    /**
-     * 获取实例
-     * @param string $config_name
-     * @throws \Exception
-     */
-    public static function instance($config_name)
-    {
-        // memcache 驱动
-        if(\Config\Store::$driver == \Config\Store::DRIVER_MC)
-        {
-            if(!isset(\Config\Store::$$config_name))
-            {
-                throw new \Exception("\\Config\\Store::$config_name not set\n");
-            }
 
-            if(!isset(self::$instance[$config_name]))
-            {
-                if(extension_loaded('Memcached'))
-                {
-                    self::$instance[$config_name] = new \Memcached;
-                }
-                elseif(extension_loaded('Memcache'))
-                {
-                    self::$instance[$config_name] = new \Memcache;
-                }
-                else
-                {
-                    sleep(2);
-                    exit("extension memcached is not installed\n");
-                }
-                foreach(\Config\Store::$$config_name as $address)
-                {
-                    list($ip, $port) = explode(':', $address);
-                    self::$instance[$config_name] ->addServer($ip, $port);
-                }
-            }
-            return self::$instance[$config_name];
-        }
-        // redis 驱动
-        elseif(\Config\Store::$driver == \Config\Store::DRIVER_REDIS)
-        {
-            if(!isset(\Config\Store::$$config_name))
-            {
-                echo "\\Config\\Store::$config_name not set\n";
-                throw new \Exception("\\Config\\Store::$config_name not set\n");
-            }
-            if(!isset(self::$instance[$config_name]))
-            {
-                self::$instance[$config_name] = new Redisd();
-                // 只选择第一个ip作为服务端
-                $address = current(\Config\Store::$$config_name);
-                list($ip, $port) = explode(':', $address);
-                $timeout = 1;
-                self::$instance[$config_name]->connect($ip, $port, $timeout);
-                self::$instance[$config_name]->setOption(\Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP);
-            }
-            return self::$instance[$config_name];
-        }
-        // 文件驱动
-        else
-        {
-            if(!isset(self::$instance[$config_name]))
-            {
-                self::$instance[$config_name] = new FileStore($config_name);
-            }
-            return self::$instance[$config_name];
-        }
-    }
-}
-
-/**
- *
- * 这里用php数组文件来存储数据，
- * 为了获取高性能需要用类似memcache的存储
- * @author walkor <walkor@workerman.net>
- *
- */
-
-class FileStore
-{
- // 为了避免频繁读取磁盘，增加了缓存机制
-    protected $dataCache = array();
-    // 上次缓存时间
-    protected $lastCacheTime = 0;
-    // 打开文件的句柄
-    protected $dataFileHandle = null;
-    
-    /**
-     * 构造函数
-     * @param 配置名 $config_name
-     */
-    public function __construct($config_name)
-    {
-        if(!is_dir(\Config\Store::$storePath) && !@mkdir(\Config\Store::$storePath, 0777, true))
-        {
-            // 可能目录已经被其它进程创建
-            clearstatcache();
-            if(!is_dir(\Config\Store::$storePath))
-            {
-                // 避免狂刷日志
-                sleep(1);
-                throw new \Exception('cant not mkdir('.\Config\Store::$storePath.')');
-            }
-        }
-        $this->dataFileHandle = fopen(__FILE__, 'r');
-        if(!$this->dataFileHandle)
-        {
-            throw new \Exception("can not fopen dataFileHandle");
-        }
-    }
-    
-    /**
-     * 设置
-     * @param string $key
-     * @param mixed $value
-     * @param int $ttl
-     * @return number
-     */
-    public function set($key, $value, $ttl = 0)
-    {
-        return file_put_contents(\Config\Store::$storePath.'/'.$key, serialize($value), LOCK_EX);
-    }
-    
-    /**
-     * 读取
-     * @param string $key
-     * @param bool $use_cache
-     * @return Ambigous <NULL, multitype:>
-     */
-    public function get($key, $use_cache = true)
-    {
-        $ret = @file_get_contents(\Config\Store::$storePath.'/'.$key);
-        return $ret ? unserialize($ret) : null;
-    }
-   
-    /**
-     * 删除
-     * @param string $key
-     * @return number
-     */
-    public function delete($key)
-    {
-        return @unlink(\Config\Store::$storePath.'/'.$key);
-    }
-    
-    /**
-     * 自增
-     * @param string $key
-     * @return boolean|multitype:
-     */
-    public function increment($key)
-    {
-        flock($this->dataFileHandle, LOCK_EX);
-        $val = $this->get($key);
-        $val = !$val ? 1 : ++$val;
-        file_put_contents(\Config\Store::$storePath.'/'.$key, serialize($val));
-        flock($this->dataFileHandle, LOCK_UN);
-        return $val;
-    }
-    
-    /**
-     * 清零销毁存储数据
-     */
-    public function destroy()
-    {
-        
-    }
-}
-
-if(\Config\Store::$driver == \Config\Store::DRIVER_REDIS)
-{
-    class Redisd extends \Redis
-    {
-        public function increment($key)
-        {
-            return parent::incr($key);
-        }
-    }
-}
