@@ -18,6 +18,13 @@
 class Gateway
 {
     /**
+     * 版本
+     *
+     * @var string
+     */
+    const VERSION = '2.0.4';
+    
+    /**
      * gateway实例
      * @var object
      */
@@ -28,6 +35,12 @@ class Gateway
      * @var string
      */
     public static $registerAddress = '127.0.0.1:1236';
+    
+    /**
+     * 秘钥
+     * @var string
+     */
+    public static $secretKey = '';
     
    /**
     * 向所有客户端(或者client_id_array指定的客户端)广播消息
@@ -197,33 +210,49 @@ class Gateway
    }
    
    /**
+    * 生成验证包，用于验证此客户端的合法性
+    *
+    * @return string
+    */
+   protected static function generateAuthBuffer()
+   {
+       $gateway_data         = GatewayProtocol::$empty;
+       $gateway_data['cmd']  = GatewayProtocol::CMD_GATEWAY_CLIENT_CONNECT;
+       $gateway_data['body'] = json_encode(array(
+               'secret_key' => self::$secretKey,
+       ));
+       return GatewayProtocol::encode($gateway_data);
+   }
+   
+   /**
     * 批量向所有gateway发包，并得到返回数组
     * @param string $gateway_data
     * @return array
     */
    protected static function getBufferFromAllGateway($gateway_data)
    {
-       $gateway_buffer = GatewayProtocol::encode($gateway_data);
-       if(isset(self::$businessWorker))
-       {
+        $gateway_buffer = GatewayProtocol::encode($gateway_data);
+        $gateway_buffer = self::$secretKey ? self::generateAuthBuffer() . $gateway_buffer : $gateway_buffer;
+        if(isset(self::$businessWorker))
+        {
            $all_addresses = self::$businessWorker->getAllGatewayAddresses();
            if(empty($all_addresses))
            {
                throw new \Exception('businessWorker::getAllGatewayAddresses return empty');
            }
-       }
-       else
-       {
+        }
+        else
+        {
            $all_addresses = self::getAllGatewayAddressesFromRegister();
            if(empty($all_addresses))
            {
                return array();
            }
-       }
-       $client_array = $status_data = $client_address_map = $receive_buffer_array = array();
-       // 批量向所有gateway进程发送请求数据
-       foreach($all_addresses as $address)
-       {
+        }
+        $client_array = $status_data = $client_address_map = $receive_buffer_array = array();
+        // 批量向所有gateway进程发送请求数据
+        foreach($all_addresses as $address)
+        {
            $client = stream_socket_client("tcp://$address", $errno, $errmsg);
            if($client && strlen($gateway_buffer) === stream_socket_sendto($client, $gateway_buffer))
            {
@@ -232,13 +261,13 @@ class Gateway
                $client_address_map[$socket_id] = explode(':',$address);
                $receive_buffer_array[$socket_id] = '';
            }
-       }
-       // 超时1秒
-       $timeout = 1;
-       $time_start = microtime(true);
-       // 批量接收请求
-       while(count($client_array) > 0)
-       {
+        }
+        // 超时1秒
+        $timeout = 1;
+        $time_start = microtime(true);
+        // 批量接收请求
+        while(count($client_array) > 0)
+        {
            $write = $except = array();
            $read = $client_array;
            if(@stream_select($read, $write, $except, $timeout))
@@ -265,15 +294,15 @@ class Gateway
            {
                break;
            }
-       }
-       $format_buffer_array = array();
-       foreach($receive_buffer_array as  $socket_id=>$buffer)
-       {
+        }
+        $format_buffer_array = array();
+        foreach($receive_buffer_array as  $socket_id=>$buffer)
+        {
            $local_ip = ip2long($client_address_map[$socket_id][0]);
            $local_port = $client_address_map[$socket_id][1];
            $format_buffer_array[$local_ip][$local_port] = $buffer;
-       }
-       return $format_buffer_array;
+        }
+        return $format_buffer_array;
    }
    
    /**
@@ -439,14 +468,15 @@ class Gateway
     */
    protected static function sendAndRecv($address , $data)
    {
-       $buffer = GatewayProtocol::encode($data);
-       $client = stream_socket_client("tcp://$address", $errno, $errmsg);
-       if(!$client)
-       {
+        $buffer = GatewayProtocol::encode($data);
+        $buffer = self::$secretKey ? self::generateAuthBuffer() . $buffer : $buffer;
+        $client = stream_socket_client("tcp://$address", $errno, $errmsg);
+        if(!$client)
+        {
            throw new \Exception("can not connect to tcp://$address $errmsg");
-       }
-       if(strlen($buffer) === stream_socket_sendto($client, $buffer))
-       {
+        }
+        if(strlen($buffer) === stream_socket_sendto($client, $buffer))
+        {
            $timeout = 1;
            // 阻塞读
            stream_set_blocking($client, 1);
@@ -477,11 +507,11 @@ class Gateway
            }
            // 返回结果
            return json_decode(rtrim($all_buffer), true);
-       }
-       else
-       {
+        }
+        else
+        {
            throw new \Exception("sendAndRecv($address, \$bufer) fail ! Can not send data!", 502);
-       }
+        }
    }
    
    /**
@@ -491,19 +521,20 @@ class Gateway
     */
    protected static function sendToGateway($address, $gateway_data)
    {
-       // 有$businessWorker说明是workerman环境，使用$businessWorker发送数据
-       if(self::$businessWorker)
-       {
+        // 有$businessWorker说明是workerman环境，使用$businessWorker发送数据
+        if(self::$businessWorker)
+        {
            if(!isset(self::$businessWorker->gatewayConnections[$address]))
            {
                return false;
            }
            return self::$businessWorker->gatewayConnections[$address]->send($gateway_data);
-       }
-       // 非workerman环境，使用udp发送数据
-       $gateway_buffer = GatewayProtocol::encode($gateway_data);
-       $client = stream_socket_client("tcp://$address", $errno, $errmsg);
-       return strlen($gateway_buffer) == stream_socket_sendto($client, $gateway_buffer);
+        }
+        // 非workerman环境
+        $gateway_buffer = GatewayProtocol::encode($gateway_data);
+        $gateway_buffer = self::$secretKey ? self::generateAuthBuffer() . $gateway_buffer : $gateway_buffer;
+        $client = stream_socket_client("tcp://$address", $errno, $errmsg);
+        return strlen($gateway_buffer) == stream_socket_sendto($client, $gateway_buffer);
    }
    
    /**
@@ -571,9 +602,9 @@ class Gateway
        {
            throw new \Exception('Can not connect to tcp://' . self::$registerAddress . ' ' .$errmsg);
        }
-       fwrite($client, '{"event":"worker_connect"}'."\n");
+       fwrite($client, '{"event":"worker_connect","secret_key":"' . self::$secretKey . '"}' . "\n");
        stream_set_timeout($client, 1);
-       $ret = fread($client, 65535);
+       $ret = fgets($client, 65535);
        if(!$ret || !$data = json_decode(trim($ret), true))
        {
            throw new \Exception('getAllGatewayAddressesFromRegister fail. tcp://' . self::$registerAddress . ' return '.var_export($ret, true));
@@ -754,6 +785,9 @@ class GatewayProtocol
     
     // worker连接gateway事件
     const CMD_WORKER_CONNECT = 200;
+    
+    // GatewayClient连接gateway事件
+    const CMD_GATEWAY_CLIENT_CONNECT = 202;
     
     // 包体是标量
     const FLAG_BODY_IS_SCALAR = 0x01;
