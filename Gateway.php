@@ -14,7 +14,7 @@
 
 /**
  * 数据发送相关
- * @version 2.0.5
+ * @version 2.0.6
  */
 class Gateway
 {
