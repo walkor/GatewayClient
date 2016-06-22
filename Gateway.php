@@ -50,7 +50,6 @@ class Gateway
      */
     public static $persistentConnection = true;
 
-    
     /**
      * 向所有客户端连接(或者 client_id_array 指定的客户端连接)广播消息
      *
@@ -58,13 +57,20 @@ class Gateway
      * @param array  $client_id_array 客户端 id 数组
      * @return void
      */
-    public static function sendToAll($message, $client_id_array = null)
+    public static function sendToAll($message, $client_id_array = null, $raw = false)
     {
         $gateway_data         = GatewayProtocol::$empty;
         $gateway_data['cmd']  = GatewayProtocol::CMD_SEND_TO_ALL;
         $gateway_data['body'] = $message;
+        if ($raw) {
+            $gateway_data['flag'] |= GatewayProtocol::FLAG_NOT_CALL_ENCODE;
+        }
 
         if ($client_id_array) {
+            if (!is_array($client_id_array)) {
+                echo new \Exception('bad $client_id_array:'.var_export($client_id_array, true));
+                return;
+            }
             $data_array = array();
             foreach ($client_id_array as $client_id) {
                 $address = Context::clientIdToAddress($client_id);
@@ -119,7 +125,7 @@ class Gateway
     {
         return (int)self::getClientIdByUid($uid);
     }
-    
+
     /**
      * 判断某个客户端连接是否在线
      *
@@ -142,12 +148,23 @@ class Gateway
     }
 
     /**
-     * 获取在线状态，目前返回一个在线 client_id 数组，client_id为 key
+     * 获取所有在线用户的session，client_id为 key
      *
      * @param string $group
      * @return array
      */
     public static function getAllClientInfo($group = null)
+    {
+        return self::getAllClientSessions($group);
+    }
+
+    /**
+     * 获取所有在线用户的session，client_id为 key
+     *
+     * @param string $group
+     * @return array
+     */
+    public static function getAllClientSessions($group = null)
     {
         $gateway_data = GatewayProtocol::$empty;
         if (!$group) {
@@ -183,9 +200,20 @@ class Gateway
      */
     public static function getClientInfoByGroup($group)
     {
-        return self::getAllClientInfo($group);
+        return self::getAllClientSessions($group);
     }
-    
+
+    /**
+     * 获取某个组的连接信息
+     *
+     * @param string $group
+     * @return array
+     */
+    public static function getClientSessionsByGroup($group)
+    {
+        return self::getAllClientSessions($group);
+    }
+
     /**
      * 获取所有连接数
      *
@@ -243,10 +271,10 @@ class Gateway
         }
         return $client_list;
     }
-    
+
     /**
      * 生成验证包，用于验证此客户端的合法性
-     * 
+     *
      * @return string
      */
     protected static function generateAuthBuffer()
@@ -436,12 +464,16 @@ class Gateway
      *
      * @param int|string|array $group
      * @param string           $message
+     * @param bool             $raw
      */
-    public static function sendToGroup($group, $message)
+    public static function sendToGroup($group, $message, $raw = false)
     {
         $gateway_data         = GatewayProtocol::$empty;
         $gateway_data['cmd']  = GatewayProtocol::CMD_SEND_TO_GROUP;
         $gateway_data['body'] = $message;
+        if ($raw) {
+            $gateway_data['flag'] |= GatewayProtocol::FLAG_NOT_CALL_ENCODE;
+        }
 
         if (!is_array($group)) {
             $group = array($group);
@@ -478,7 +510,7 @@ class Gateway
         }
         return self::setSocketSession($client_id, Context::sessionEncode($session));
     }
-    
+
     /**
      * 更新 session，实际上是与老的session合并
      *
@@ -493,12 +525,12 @@ class Gateway
         }
         return self::sendCmdAndMessageToClient($client_id, GatewayProtocol::CMD_UPDATE_SESSION, '', Context::sessionEncode($session));
     }
-    
+
     /**
      * 获取某个client_id的session
      *
      * @param int   $client_id
-     * @return mixed false表示出错、null表示用户不存在、array表示具体的session信息 
+     * @return mixed false表示出错、null表示用户不存在、array表示具体的session信息
      */
     public static function getSession($client_id)
     {
@@ -603,22 +635,32 @@ class Gateway
      * 发送数据到网关
      *
      * @param string $address
-     * @param mixed  $gateway_data
+     * @param array  $gateway_data
      * @return bool
      */
     protected static function sendToGateway($address, $gateway_data)
+    {
+        return self::sendBufferToGateway($address, GatewayProtocol::encode($gateway_data));
+    }
+
+    /**
+     * 发送buffer数据到网关
+     * @param string $address
+     * @param string $gateway_buffer
+     * @return bool
+     */
+    protected static function sendBufferToGateway($address, $gateway_buffer)
     {
         // 有$businessWorker说明是workerman环境，使用$businessWorker发送数据
         if (self::$businessWorker) {
             if (!isset(self::$businessWorker->gatewayConnections[$address])) {
                 return false;
             }
-            return self::$businessWorker->gatewayConnections[$address]->send($gateway_data);
+            return self::$businessWorker->gatewayConnections[$address]->send($gateway_buffer, true);
         }
         // 非workerman环境
-        $gateway_buffer = GatewayProtocol::encode($gateway_data);
         $gateway_buffer = self::$secretKey ? self::generateAuthBuffer() . $gateway_buffer : $gateway_buffer;
-        $flag = self::$persistentConnection ? STREAM_CLIENT_PERSISTENT | STREAM_CLIENT_CONNECT : STREAM_CLIENT_CONNECT;
+        $flag           = self::$persistentConnection ? STREAM_CLIENT_PERSISTENT | STREAM_CLIENT_CONNECT : STREAM_CLIENT_CONNECT;
         $client         = stream_socket_client("tcp://$address", $errno, $errmsg, self::$connectTimeout, $flag);
         return strlen($gateway_buffer) == stream_socket_sendto($client, $gateway_buffer);
     }
@@ -631,11 +673,12 @@ class Gateway
      */
     protected static function sendToAllGateway($gateway_data)
     {
+        $buffer = GatewayProtocol::encode($gateway_data);
         // 如果有businessWorker实例，说明运行在workerman环境中，通过businessWorker中的长连接发送数据
         if (self::$businessWorker) {
             foreach (self::$businessWorker->gatewayConnections as $gateway_connection) {
                 /** @var TcpConnection $gateway_connection */
-                $gateway_connection->send($gateway_data);
+                $gateway_connection->send($buffer, true);
             }
         } // 运行在其它环境中，通过注册中心得到gateway地址
         else {
@@ -645,7 +688,7 @@ class Gateway
                     self::$registerAddress . '  return ' . var_export($all_addresses, true));
             }
             foreach ($all_addresses as $address) {
-                self::sendToGateway($address, $gateway_data);
+                self::sendBufferToGateway($address, $buffer);
             }
         }
     }
