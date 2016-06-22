@@ -931,105 +931,103 @@ class GatewayProtocol
 
     // 心跳
     const CMD_PING = 201;
-    
+
     // GatewayClient连接gateway事件
     const CMD_GATEWAY_CLIENT_CONNECT = 202;
-    
+
     // 根据client_id获取session
     const CMD_GET_SESSION_BY_CLIENT_ID = 203;
-    
+
     // 发给gateway，覆盖session
     const CMD_SET_SESSION = 204;
 
     // 包体是标量
     const FLAG_BODY_IS_SCALAR = 0x01;
-    
+
+    // 通知gateway在send时不调用协议encode方法，在广播组播时提升性能
+    const FLAG_NOT_CALL_ENCODE = 0x02;
+
     /**
      * 包头长度
-     * @var integer
+     *
+     * @var int
      */
     const HEAD_LEN = 28;
-    
+
     public static $empty = array(
-        'cmd' => 0,
-        'local_ip' => 0,
-        'local_port' => 0,
-        'client_ip' => 0,
-        'client_port' => 0,
+        'cmd'           => 0,
+        'local_ip'      => 0,
+        'local_port'    => 0,
+        'client_ip'     => 0,
+        'client_port'   => 0,
         'connection_id' => 0,
-        'flag' => 0,
-        'gateway_port' => 0,
-        'ext_data' => '',
-        'body' => '',
+        'flag'          => 0,
+        'gateway_port'  => 0,
+        'ext_data'      => '',
+        'body'          => '',
     );
-     
+
     /**
      * 返回包长度
+     *
      * @param string $buffer
      * @return int return current package length
      */
     public static function input($buffer)
     {
-        if(strlen($buffer) < self::HEAD_LEN)
-        {
+        if (strlen($buffer) < self::HEAD_LEN) {
             return 0;
         }
-        
+
         $data = unpack("Npack_len", $buffer);
         return $data['pack_len'];
     }
-    
+
     /**
-     * 获取整个包的buffer
-     * @param array $data
+     * 获取整个包的 buffer
+     *
+     * @param mixed $data
      * @return string
      */
     public static function encode($data)
     {
         $flag = (int)is_scalar($data['body']);
-        if(!$flag)
-        {
+        if (!$flag) {
             $data['body'] = serialize($data['body']);
         }
-        $ext_len = strlen($data['ext_data']);
-        $package_len = self::HEAD_LEN + $ext_len + strlen($data['body']);
+        $data['flag'] |= $flag;
+        $ext_len      = strlen($data['ext_data']);
+        $package_len  = self::HEAD_LEN + $ext_len + strlen($data['body']);
         return pack("NCNnNnNCnN", $package_len,
-                       $data['cmd'], $data['local_ip'],
-                       $data['local_port'], $data['client_ip'],
-                       $data['client_port'], $data['connection_id'], 
-                       $flag, $data['gateway_port'], 
-                       $ext_len) . $data['ext_data'] . $data['body'];
+            $data['cmd'], $data['local_ip'],
+            $data['local_port'], $data['client_ip'],
+            $data['client_port'], $data['connection_id'],
+            $data['flag'], $data['gateway_port'],
+            $ext_len) . $data['ext_data'] . $data['body'];
     }
-    
+
     /**
      * 从二进制数据转换为数组
+     *
      * @param string $buffer
      * @return array
-     */    
+     */
     public static function decode($buffer)
     {
-        $data = unpack("Npack_len/Ccmd/Nlocal_ip/nlocal_port/Nclient_ip/nclient_port/Nconnection_id/Cflag/ngateway_port/Next_len", $buffer);
-        if($data['ext_len'] > 0)
-        {
+        $data = unpack("Npack_len/Ccmd/Nlocal_ip/nlocal_port/Nclient_ip/nclient_port/Nconnection_id/Cflag/ngateway_port/Next_len",
+            $buffer);
+        if ($data['ext_len'] > 0) {
             $data['ext_data'] = substr($buffer, self::HEAD_LEN, $data['ext_len']);
-            if($data['flag'] & self::FLAG_BODY_IS_SCALAR)
-            {
+            if ($data['flag'] & self::FLAG_BODY_IS_SCALAR) {
                 $data['body'] = substr($buffer, self::HEAD_LEN + $data['ext_len']);
-            }
-            else
-            {
+            } else {
                 $data['body'] = unserialize(substr($buffer, self::HEAD_LEN + $data['ext_len']));
             }
-        }
-        else
-        {
+        } else {
             $data['ext_data'] = '';
-            if($data['flag'] & self::FLAG_BODY_IS_SCALAR)
-            {
+            if ($data['flag'] & self::FLAG_BODY_IS_SCALAR) {
                 $data['body'] = substr($buffer, self::HEAD_LEN);
-            }
-            else
-            {
+            } else {
                 $data['body'] = unserialize(substr($buffer, self::HEAD_LEN));
             }
         }
