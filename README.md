@@ -17,7 +17,7 @@ use GatewayClient\Gateway;
 // 设置服务注册地址，用来指定与哪个GatewayWorker（集群）通讯。
 Gateway::$registerAddress = 'x.x.x.x:xx';
 
-// 支持GatewayWorker中的所有接口
+// GatewayClient支持GatewayWorker中的所有接口(Gateway::closeCurrentClient Gateway::sendToCurrentClient除外)
 Gateway::sendToAll($data);
 Gateway::sendToClient($client_id, $data);
 Gateway::closeClient($client_id);
