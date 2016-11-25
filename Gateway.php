@@ -1,4 +1,5 @@
 <?php
+namespace GatewayClient;
 /**
  * This file is part of workerman.
  *
@@ -14,7 +15,7 @@
 
 /**
  * 数据发送相关
- * @version 2.0.7
+ * @version 3.0.0
  */
 class Gateway
 {
