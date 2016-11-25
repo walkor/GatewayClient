@@ -16,6 +16,7 @@ GatewayWorker3.0.0及以上版本请使用 [3.0.0版本的GatewayClient](https:/
 composer require workerman/gatewayclient
 ```
 
+## 使用
 ```php
 // GatewayClient 3.0.0版本以后加了命名空间
 use GatewayClient\Gateway;
