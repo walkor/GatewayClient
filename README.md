@@ -8,10 +8,10 @@ GatewayWorker2.0.5-2.0.6版本请使用[2.0.6版本的GatewayClient](https://git
 
 GatewayWorker2.0.7及以上版本请使用 [2.0.7版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v2.0.7)
 
-GatewayWorker3.0.0及以上版本请使用 [3.3.0版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.3.0)<br>
-注意：GatewayClient3.3.0以后加了命名空间```GatewayClient``` 
+GatewayWorker3.0.0及以上版本请使用 [3.0.0版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.0.0)<br>
+注意：GatewayClient30.0以后加了命名空间```GatewayClient``` 
 ```php
-// GatewayClient 3.3.0版本以后加了命名空间
+// GatewayClient 3.0.0版本以后加了命名空间
 use GatewayClient\Gateway;
 
 // 设置服务注册地址，用来指定与哪个GatewayWorker（集群）通讯。
