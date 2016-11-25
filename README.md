@@ -11,7 +11,7 @@ GatewayWorker2.0.7及以上版本请使用 [2.0.7版本的GatewayClient](https:/
 GatewayWorker3.0.0及以上版本请使用 [3.0.0版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.0.0)<br>
 注意：GatewayClient3.0.0以后支持composer并加了命名空间```GatewayClient``` <br>
 
-## 安装（适用于3.0.0及以上版本）
+## 安装（composer安装适用于3.0.0及以上版本）
 ```
 composer require workerman/gatewayclient
 ```
