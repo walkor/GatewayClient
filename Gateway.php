@@ -1,5 +1,6 @@
 <?php
 namespace GatewayClient;
+use \Exception;
 /**
  * This file is part of workerman.
  *
