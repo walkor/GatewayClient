@@ -21,7 +21,7 @@ composer require workerman/gatewayclient
 // GatewayClient 3.0.0版本以后加了命名空间
 use GatewayClient\Gateway;
 
-// 设置服务注册地址，用来指定与哪个GatewayWorker（集群）通讯。
+// 设置服务注册地址(端口为start_register.php文件中监听的端口)，用来指定与哪个GatewayWorker（集群）通讯。
 Gateway::$registerAddress = 'x.x.x.x:xx';
 
 // GatewayClient支持GatewayWorker中的所有接口(Gateway::closeCurrentClient Gateway::sendToCurrentClient除外)
