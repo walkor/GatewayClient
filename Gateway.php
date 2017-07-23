@@ -35,6 +35,13 @@ class Gateway
     public static $registerAddress = '127.0.0.1:1236';
 
     /**
+     * 注册中心地址缓存
+     *
+     * @var array
+     */
+    public static $registerAddressCache = [];
+
+    /**
      * 秘钥
      * @var string
      */
@@ -819,10 +826,10 @@ class Gateway
      */
     protected static function getAllGatewayAddressesFromRegister()
     {
-        static $addresses_cache, $last_update;
+        static $last_update;
         $time_now = time();
         $expiration_time = 1;
-        if(empty($addresses_cache) || $time_now - $last_update > $expiration_time) {
+        if(empty(self::$registerAddressCache[self::$registerAddress]) || $time_now - $last_update > $expiration_time) {
             $client = stream_socket_client('tcp://' . self::$registerAddress, $errno, $errmsg, self::$connectTimeout);
             if (!$client) {
                 throw new Exception('Can not connect to tcp://' . self::$registerAddress . ' ' . $errmsg);
@@ -835,9 +842,9 @@ class Gateway
                     self::$registerAddress . ' return ' . var_export($ret, true));
             }
             $last_update = $time_now;
-            $addresses_cache = $data['addresses'];
+            self::$registerAddressCache[self::$registerAddress] = $data['addresses'];
         }
-        return $addresses_cache;
+        return self::$registerAddressCache[self::$registerAddress];
     }
 }
 
