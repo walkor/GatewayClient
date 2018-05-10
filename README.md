@@ -6,9 +6,12 @@ GatewayWorker2.0.1-2.0.4请使用[2.0.4版本的GatewayClient](https://github.co
 
 GatewayWorker2.0.5-2.0.6版本请使用[2.0.6版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/2.0.6)
 
-GatewayWorker2.0.7及以上版本请使用 [2.0.7版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v2.0.7)
+GatewayWorker2.0.7版本请使用 [2.0.7版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v2.0.7)
 
-GatewayWorker3.0.0及以上版本请使用 [3.0.0版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.0.0)<br>
+GatewayWorker3.0.0-3.0.7及以上版本请使用 [3.0.0版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.0.0)<br>
+
+GatewayWorker3.0.8及以上版本请使用 [3.0.8版本的GatewayClient](https://github.com/walkor/GatewayClient/releases/tag/v3.0.8)<br>
+
 注意：GatewayClient3.0.0以后支持composer并加了命名空间```GatewayClient``` <br>
 
 ## 安装（composer安装适用于3.0.0及以上版本）
