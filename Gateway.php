@@ -16,7 +16,7 @@ use \Exception;
 
 /**
  * 数据发送相关
- * @version 3.0.9
+ * @version 3.0.10
  */
 
 class Gateway
