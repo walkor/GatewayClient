@@ -1292,8 +1292,8 @@ class Gateway
                 set_error_handler(function(){});
                 $client = stream_socket_client('tcp://' . $register_address, $errno, $errmsg, static::$connectTimeout);
                 restore_error_handler();
-                if (!$client) {
-                    continue;
+                if ($client) {
+                    break;
                 }
             }
             if (!$client) {
