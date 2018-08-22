@@ -1289,7 +1289,9 @@ class Gateway
         $register_addresses = (array)static::$registerAddress;
         if(empty($addresses_cache) || $time_now - $last_update > $expiration_time) {
             foreach ($register_addresses as $register_address) {
+                set_error_handler(function(){});
                 $client = stream_socket_client('tcp://' . $register_address, $errno, $errmsg, static::$connectTimeout);
+                restore_error_handler();
                 if (!$client) {
                     continue;
                 }
