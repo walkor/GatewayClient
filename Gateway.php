@@ -1495,7 +1495,7 @@ class GatewayProtocol
     // 向组成员发消息
     const CMD_SEND_TO_GROUP = 22;
     // 获取组成员
-    const CMD_GET_CLINET_SESSIONS_BY_GROUP = 23;
+    const CMD_GET_CLIENT_SESSIONS_BY_GROUP = 23;
     // 获取组在线连接数
     const CMD_GET_CLIENT_COUNT_BY_GROUP = 24;
     // 按照条件查找
