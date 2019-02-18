@@ -14,6 +14,8 @@ GatewayWorker3.0.8及以上版本请使用 [3.0.13版本的GatewayClient](https:
 
 注意：GatewayClient3.0.0以后支持composer并加了命名空间```GatewayClient``` <br>
 
+[如何查看GatewayWorker版本请点击这里](http://doc2.workerman.net/get-gateway-version.html)
+
 ## 安装（composer安装适用于3.0.0及以上版本）
 ```
 composer require workerman/gatewayclient
