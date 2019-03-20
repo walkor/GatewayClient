@@ -1287,6 +1287,7 @@ class Gateway
         $time_now = time();
         $expiration_time = 1;
         $register_addresses = (array)static::$registerAddress;
+        $client = null;
         if(empty($addresses_cache) || $time_now - $last_update > $expiration_time) {
             foreach ($register_addresses as $register_address) {
                 set_error_handler(function(){});
