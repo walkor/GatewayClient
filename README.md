@@ -16,9 +16,22 @@ GatewayWorker3.0.8及以上版本请使用 [3.0.13版本的GatewayClient](https:
 
 [如何查看GatewayWorker版本请点击这里](http://doc2.workerman.net/get-gateway-version.html)
 
-## 安装（composer安装适用于3.0.0及以上版本）
+## 安装
+**方法一**
 ```
 composer require workerman/gatewayclient
+```
+使用时引入`vendor/autoload.php` 类似如下：
+```php
+use GatewayClient\Gateway;
+require_once __DIR__ . '/vendor/autoload.php';
+```
+
+**方法二**
+下载源文件到任意目录，手动引入 `GatewayClient/Gateway.php`, 类似如下：
+```php
+use GatewayClient\Gateway;
+require_once __DIR__ . '/GatewayClient/Gateway.php';
 ```
 
 ## 使用
