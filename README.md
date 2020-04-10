@@ -26,6 +26,8 @@ composer require workerman/gatewayclient
 // GatewayClient 3.0.0版本以后加了命名空间
 use GatewayClient\Gateway;
 
+require_once __DIR__ . '/vendor/autoload.php';
+
 /**
  * === 指定registerAddress表明与哪个GatewayWorker(集群)通讯。===
  * GatewayWorker里用Register服务来区分集群，即一个GatewayWorker(集群)只有一个Register服务，
