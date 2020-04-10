@@ -24,14 +24,14 @@ composer require workerman/gatewayclient
 使用时引入`vendor/autoload.php` 类似如下：
 ```php
 use GatewayClient\Gateway;
-require_once __DIR__ . '/vendor/autoload.php';
+require_once '真实路径/vendor/autoload.php';
 ```
 
 **方法二**
 下载源文件到任意目录，手动引入 `GatewayClient/Gateway.php`, 类似如下：
 ```php
 use GatewayClient\Gateway;
-require_once __DIR__ . '/GatewayClient/Gateway.php';
+require_once '真实路径/GatewayClient/Gateway.php';
 ```
 
 ## 使用
@@ -39,7 +39,11 @@ require_once __DIR__ . '/GatewayClient/Gateway.php';
 // GatewayClient 3.0.0版本以后加了命名空间
 use GatewayClient\Gateway;
 
-require_once __DIR__ . '/vendor/autoload.php';
+// composer安装
+require_once '真实路径/vendor/autoload.php';
+
+// 源文件引用
+//require_once '真实路径/GatewayClient/Gateway.php';
 
 /**
  * === 指定registerAddress表明与哪个GatewayWorker(集群)通讯。===
