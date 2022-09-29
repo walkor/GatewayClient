@@ -57,7 +57,7 @@ require_once '真实路径/vendor/autoload.php';
  * 
  * === 如果GatewayClient和GatewayWorker不在同一台服务器需要以下步骤 ===
  * 1、需要设置start_gateway.php中的lanIp为实际的本机内网ip(如不在一个局域网也可以设置成外网ip)，设置完后要重启GatewayWorker
- * 2、GatewayClient这里的Gateway::$registerAddress的ip填写填写上面步骤1lanIp所指定的ip，端口
+ * 2、GatewayClient这里的Gateway::$registerAddress的地址填写实际运行Register的服务器ip和端口
  * 3、需要开启GatewayWorker所在服务器的防火墙，让以下端口可以被GatewayClient所在服务器访问，
  *    端口包括Rgister服务的端口以及start_gateway.php中lanIp与startPort指定的几个端口
  *
