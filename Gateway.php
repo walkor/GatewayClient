@@ -163,6 +163,11 @@ class Gateway
     {
         return (int)static::getClientIdByUid($uid);
     }
+
+    public static function isUidsOnline($uids)
+    {
+        return static::batchGetClientIdByUid($uids);
+    }
     
     /**
      * 判断client_id对应的连接是否在线
@@ -391,6 +396,34 @@ class Gateway
                 if ($connection_id_array) {
                     foreach ($connection_id_array as $connection_id) {
                         $client_list[] = Context::addressToClientId($local_ip, $local_port, $connection_id);
+                    }
+                }
+            }
+        }
+        return $client_list;
+    }
+
+    /**
+     * 批量获取与 uid 绑定的 client_id 列表
+     *
+     * @param array $uids
+     * @return array
+     */
+    public static function batchGetClientIdByUid($uids)
+    {
+        $gateway_data             = GatewayProtocol::$empty;
+        $gateway_data['cmd']      = GatewayProtocol::CMD_BATCH_GET_CLIENT_ID_BY_UID;
+        $gateway_data['ext_data'] = json_encode($uids);
+        $client_list              = array();
+        $all_buffer_array         = static::getBufferFromAllGateway($gateway_data);
+        foreach ($all_buffer_array as $local_ip => $buffer_array) {
+            foreach ($buffer_array as $local_port => $uid_connection_id_array) {
+                if ($uid_connection_id_array) {
+                    foreach ($uid_connection_id_array as $uid => $connection_ids) {
+                        $client_list[$uid] = [];
+                        foreach ($connection_ids as $connection_id) {
+                            $client_list[$uid][] = Context::addressToClientId($local_ip, $local_port, $connection_id);
+                        }
                     }
                 }
             }
@@ -697,7 +730,7 @@ class Gateway
     /**
      * 批量向所有 gateway 发包，并得到返回数组
      *
-     * @param string $gateway_data
+     * @param string|array $gateway_data
      * @return array
      * @throws Exception
      */
@@ -1497,6 +1530,8 @@ class GatewayProtocol
     const CMD_SEND_TO_UID = 14;
     // 根据uid获取绑定的clientid
     const CMD_GET_CLIENT_ID_BY_UID = 15;
+    // 批量获取uid列表批量获取绑定的clientid
+    const CMD_BATCH_GET_CLIENT_ID_BY_UID = 16;
     // 加入组
     const CMD_JOIN_GROUP = 20;
     // 离开组
