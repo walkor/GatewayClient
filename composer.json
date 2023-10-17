@@ -4,6 +4,8 @@
     "homepage": "http://www.workerman.net",
     "license" : "MIT",
     "autoload": {
-        "psr-4": {"GatewayClient\\": "./"}
+        "psr-4": {
+            "GatewayClient\\": "./"
+        }
     }
 }
