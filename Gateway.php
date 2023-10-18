@@ -167,7 +167,9 @@ class Gateway
 
     public static function isUidsOnline($uids)
     {
-        return static::batchGetClientIdByUid($uids);
+        return array_map(function ($item) {
+            return (int) $item;
+        }, static::batchGetClientIdByUid($uids));
     }
     
     /**

@@ -73,6 +73,7 @@ Gateway::closeClient($client_id);
 Gateway::isOnline($client_id);
 Gateway::bindUid($client_id, $uid);
 Gateway::isUidOnline($uid);
+Gateway::isUidsOnline($uids);
 Gateway::getClientIdByUid($uid);
 Gateway::unbindUid($client_id, $uid);
 Gateway::sendToUid($uid, $dat);
