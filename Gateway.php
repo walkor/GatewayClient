@@ -417,13 +417,15 @@ class Gateway
         $gateway_data             = GatewayProtocol::$empty;
         $gateway_data['cmd']      = GatewayProtocol::CMD_BATCH_GET_CLIENT_ID_BY_UID;
         $gateway_data['ext_data'] = json_encode($uids);
-        $client_list              = array();
+        $client_list              = [];
         $all_buffer_array         = static::getBufferFromAllGateway($gateway_data);
         foreach ($all_buffer_array as $local_ip => $buffer_array) {
             foreach ($buffer_array as $local_port => $uid_connection_id_array) {
                 if ($uid_connection_id_array) {
                     foreach ($uid_connection_id_array as $uid => $connection_ids) {
-                        $client_list[$uid] = [];
+                        if (! isset($client_list[$uid])) {
+                            $client_list[$uid] = [];
+                        }
                         foreach ($connection_ids as $connection_id) {
                             $client_list[$uid][] = Context::addressToClientId($local_ip, $local_port, $connection_id);
                         }
