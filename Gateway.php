@@ -324,7 +324,7 @@ class Gateway
     }
 
     /**
-     * 批量获取群组的在线client_id数.
+     * 批量获取群组ID内客户端个数.
      */
     public static function batchGetClientIdCountByGroup(array $groups): array
     {
