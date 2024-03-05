@@ -324,6 +324,30 @@ class Gateway
     }
 
     /**
+     * 批量获取群组的在线client_id数.
+     */
+    public static function batchGetClientIdCountByGroup(array $groups): array
+    {
+        $gateway_data = GatewayProtocol::$empty;
+        $gateway_data['cmd'] = GatewayProtocol::CMD_BATCH_GET_CLIENT_COUNT_BY_GROUP;
+        $gateway_data['ext_data'] = json_encode($groups);
+        $all_buffer_array = static::getBufferFromAllGateway($gateway_data);
+
+        $return = [];
+        foreach ($all_buffer_array as $local_ip => $buffer_array) {
+            foreach ($buffer_array as $local_port => $data) {
+                foreach ($data as $group => $count) {
+                    if (! isset($return[$group])) {
+                        $return[$group] = 0;
+                    }
+                    $return[$group] += $count;
+                }
+            }
+        }
+        return $return;
+    }
+
+    /**
      * 获取某个群组在线client_id列表
      *
      * @param string $group

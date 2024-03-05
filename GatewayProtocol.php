@@ -85,6 +85,8 @@ class GatewayProtocol
     const CMD_GET_GROUP_ID_LIST = 26;
     // 取消分组
     const CMD_UNGROUP = 27;
+    // 批量获取群组ID内客户端个数
+    const CMD_BATCH_GET_CLIENT_COUNT_BY_GROUP = 28;
     // worker连接gateway事件
     const CMD_WORKER_CONNECT = 200;
     // 心跳
