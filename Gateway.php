@@ -863,17 +863,12 @@ class Gateway
      */
     public static function closeClient($client_id, $message = null)
     {
-        if ($client_id === Context::$client_id) {
-            return static::closeCurrentClient($message);
-        } // 不是发给当前用户则使用存储中的地址
-        else {
-            $address_data = Context::clientIdToAddress($client_id);
-            if (!$address_data) {
-                return false;
-            }
-            $address      = long2ip($address_data['local_ip']) . ":{$address_data['local_port']}";
-            return static::kickAddress($address, $address_data['connection_id'], $message);
+        $address_data = Context::clientIdToAddress($client_id);
+        if (!$address_data) {
+            return false;
         }
+        $address = long2ip($address_data['local_ip']) . ":{$address_data['local_port']}";
+        return static::kickAddress($address, $address_data['connection_id'], $message);
     }
 
     /**
